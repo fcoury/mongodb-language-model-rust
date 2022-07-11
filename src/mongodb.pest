@@ -15,7 +15,7 @@ text_options = {
   (value_separator ~ text_options_optional)? ~ end_object
 }
 
-text_options_value = { string | true | false }
+text_options_value = { string | true_lit | false_lit }
 
 text_options_optional = {
   (quotation_mark ~ text_optional_operator ~ quotation_mark ~ name_separator ~ text_options_value)*
@@ -39,7 +39,7 @@ where_clause = { quotation_mark ~ where_operator ~ quotation_mark ~ name_separat
 
 leaf_clause = { key ~ name_separator ~ value }
 
-value = operator_expression | json
+value = { operator_expression | json }
 
 // --- Operators ---
 
@@ -141,7 +141,7 @@ geometry_coordinates = {
 legacy_coordinates = {
   begin_array ~
     number_longitude ~ value_separator ~
-    number_latitude
+    number_latitude ~
   end_array
 }
 
@@ -171,15 +171,17 @@ box_shape = {
     quotation_mark ~ "$box" ~ quotation_mark ~ name_separator ~
 // TODO - How to translate the $ modifier to pest?
 //     $(
-    begin_array ~
+    (
       begin_array ~
-        number_longitude ~ value_separator ~ number_latitude ~
-      end_array ~
-      value_separator ~
-      begin_array ~
-        number_longitude ~ value_separator ~ number_latitude ~
-      end_array ~
-    end_array ~
+        begin_array ~
+          number_longitude ~ value_separator ~ number_latitude ~
+        end_array ~
+        value_separator ~
+        begin_array ~
+          number_longitude ~ value_separator ~ number_latitude ~
+        end_array ~
+      end_array
+    )~
 //     )
   end_object
 }
@@ -189,15 +191,17 @@ polygon_shape = {
     quotation_mark ~ "$polygon" ~ quotation_mark ~ name_separator ~
 // TODO - How to translate the $ modifier to pest?
 //     $(
-    begin_array ~
-      (begin_array ~
-        number ~ value_separator ~ number ~
-      end_array) ~
-      (value_separator ~
+    (
       begin_array ~
-        number ~ value_separator ~ number ~
-      end_array)* ~
-    end_array ~
+        (begin_array ~
+          number ~ value_separator ~ number ~
+        end_array) ~
+        (value_separator ~
+        begin_array ~
+          number ~ value_separator ~ number ~
+        end_array)* ~
+      end_array
+    ) ~
 //     )
   end_object
 }
@@ -221,8 +225,13 @@ leaf_value_list = {
 // field name limitations: https://docs.mongodb.com/manual/reference/limits/#Restrictions-on-Field-Names
 // no "." no null character and does not start with "$"
 // assuming at least 1 character
+not_asterist_or_zero = { !("*" | "\x00") ~ ANY }
+
+light_char = { ASCII_ALPHANUMERIC }
+
 key = {
-  quotation_mark ~ ([^$] [^\x00"]*) ~ quotation_mark
+  // TODO quotation_mark ~ not_asterist_or_zero* ~ quotation_mark
+  quotation_mark ~ light_char* ~ quotation_mark
 }
 
 //
@@ -258,9 +267,9 @@ value_separator = _{ "," }
 // ----- 3. Values -----
 
 leaf_value = {
-  false
+  false_lit
   | null
-  | true
+  | true_lit
   | object
   | array
   | number
@@ -268,12 +277,12 @@ leaf_value = {
   | extended_json_value
 }
 
-false = { "false" }
-null  = { "null"  }
-true  = { "true"  }
+false_lit = { "false" }
+true_lit  = { "true"  }
+null      = { "null"  }
 
 extended_json_value = {
-  = ejson_regex
+    ejson_regex
   | ejson_objectid
   | ejson_minkey
   | ejson_maxkey
@@ -333,12 +342,12 @@ ejson_decimal = {
 ejson_date = {
   begin_object ~
     quotation_mark ~ "$date" ~ quotation_mark ~ name_separator ~
-    (ejson_iso8601_date | ejson_numberlong_date)
+    (ejson_iso8601_date | ejson_numberlong_date) ~
   end_object
 }
 
 ejson_iso8601_date = {
-  quotation_mark ~ (iso_date_time) ~ quotation_mark
+  quotation_mark ~ iso_date_time ~ quotation_mark
   // TODO $(iso_date_time)
 }
 
@@ -368,7 +377,7 @@ ejson_dbref = {
         value_separator ~ quotation_mark ~ "$db" ~ quotation_mark ~
         name_separator ~ string
       )?
-    )
+    ) ~
   end_object
 }
 
@@ -381,9 +390,9 @@ ejson_regex = {
       ) ~
       ( // options
         value_separator ~ quotation_mark ~ "$options" ~ quotation_mark ~
-        name_separator ~ quotation_mark ~ [gims]* ~ quotation_mark
+        name_separator ~ quotation_mark ~ ("g" | "i" | "m" | "s")* ~ quotation_mark
       )?
-    )
+    ) ~
   end_object
 }
 
@@ -398,19 +407,19 @@ ejson_binary = {
         value_separator ~ quotation_mark ~ "$type" ~ quotation_mark ~
         name_separator ~ quotation_mark ~ ASCII_HEX_DIGIT ~ quotation_mark
       )
-    )
+    ) ~
   end_object
 }
 
 ejson_timestamp = {
   begin_object ~
-      quotation_mark ~ "$timestamp" ~ quotation_mark ~ name_separator ~
-      ( // object
-        begin_object ~
-          quotation_mark ~ "t" ~ quotation_mark ~ name_separator ~ number ~ value_separator ~
-          quotation_mark ~ "i" ~ quotation_mark ~ name_separator ~ number ~
-        end_object
-      )
+    quotation_mark ~ "$timestamp" ~ quotation_mark ~ name_separator ~
+    ( // object
+      begin_object ~
+        quotation_mark ~ "t" ~ quotation_mark ~ name_separator ~ number ~ value_separator ~
+        quotation_mark ~ "i" ~ quotation_mark ~ name_separator ~ number ~
+      end_object
+    ) ~
   end_object
 }
 
@@ -461,10 +470,10 @@ number_positive = {
 // Taking into account PEG's greedy behaviour and lack of backtracking.
 number_longitude = {
   minus? ~ (
-    "180" ~ (decimal_point zero)?
+    "180" ~ (decimal_point ~ zero)?
     | (
-      (( "1" ~ [0-7] ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ) ~ decimal_point ~ int* )
-      | (( "1" ~ [0-7] ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ))
+      (( "1" ~ '0'..'7' ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ) ~ decimal_point ~ int* )
+      | (( "1" ~ '0'..'7' ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ))
     )
   )
 }
@@ -474,7 +483,7 @@ number_longitude = {
 // Taking into account PEG's greedy behaviour and lack of backtracking.
 number_latitude = {
   minus? ~ (
-    "90" ~ (decimal_point zero)?
+    "90" ~ (decimal_point ~ zero)?
     | (
       (( digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ) ~ decimal_point ~ int* )
       | (( digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ))
@@ -484,9 +493,9 @@ number_latitude = {
 
 
 decimal_point = { "." }
-digit1_9      = { [1-9] }
-e             = { [eE] }
-exp           = { e ~ (minus / plus)? ~ ASCII_DIGIT+ }
+digit1_9      = { '1'..'9' }
+e             = { "e" | "E" }
+exp           = { e ~ (minus | plus)? ~ ASCII_DIGIT+ }
 frac          = { decimal_point ~ ASCII_DIGIT+ }
 int           = { zero | (digit1_9 ~ ASCII_DIGIT*) }
 minus         = { "-" }
@@ -496,7 +505,8 @@ zero          = { "0" }
 // ----- 7. Strings -----
 
 string = {
-  quotation_mark ~ char* ~ quotation_mark
+  // TODO quotation_mark ~ char* ~ quotation_mark
+  quotation_mark ~ light_char* ~ quotation_mark
 }
 
 char = {
@@ -518,7 +528,8 @@ char = {
 
 escape         = { "\\" }
 quotation_mark = { "\"" }
-unescaped      = { [^\0-\x1F\x22\x5C] }
+// TODO unescaped      = { [^\0-\x1F\x22\x5C] }
+unescaped      = { !'\0'..'\x1F' }
 
 // ----- Core ABNF Rules -----
 
@@ -544,7 +555,7 @@ date_century = {
   (ASCII_DIGIT ~ ASCII_DIGIT)
 }
 
-date_decate = {
+date_decade = {
   ASCII_DIGIT
 }
 
@@ -569,26 +580,26 @@ date_month = {
 date_wday = {
   // 1-7
   // 1 is Monday, 7 is Sunday
-  DIGIT
+  ASCII_DIGIT
 }
 
-date_mday = {
+date_mday = ${
   // 01-28, 01-29, 01-30, 01-31 based on
   // month/year
   // TODO use $()
   (ASCII_DIGIT ~ ASCII_DIGIT)
 }
 
-date_yday = {
+date_yday = ${
   // 001-365, 001-366 based on year
   // TODO use $()
   (ASCII_DIGIT ~ ASCII_DIGIT ~ ASCII_DIGIT)
 }
 
-date_week = {
+date_week = ${
   // 01-52, 01-53 based on year
   // TODO use $()
-  (ASCII_DIGIT ~ ASCII_DIGIT)
+  ASCII_DIGIT ~ ASCII_DIGIT
 }
 
 datepart_fullyear = {
@@ -607,7 +618,7 @@ dateopt_century = {
   "-" | date_century
 }
 
-dateopt_fullyear {
+dateopt_fullyear = {
   "-" | datepart_fullyear
 }
 
@@ -635,16 +646,12 @@ datespec_month = {
   "-" ~ dateopt_year ~ date_month ~ ("-"? ~ date_mday)
 }
 
-datespec_year = {
-  date_century | dateopt_century ~ date_year
-}
-
-datespec_month = {
-  "-" ~ dateopt_year ~ date_month ~ ("-"? ~ date_mday)
-}
-
 datespec_mday = {
   "--" ~ dateopt_month ~ date_mday
+}
+
+datespec_week = {
+   datepart_wkyear ~ "W" ~ (date_week | dateopt_week ~ date_wday)
 }
 
 datespec_wday = {
@@ -666,19 +673,19 @@ datespec_yday = {
 }
 
 //* Time *//
-time_hour = {
+time_hour = ${
   // 00-24
   // TODO use $()
   (ASCII_DIGIT ~ ASCII_DIGIT)
 }
 
-time_minute = {
+time_minute = ${
   // 00-59
   // TODO use $()
   (ASCII_DIGIT ~ ASCII_DIGIT)
 }
 
-time_second = {
+time_second = ${
    // 00-58, 00-59, 00-60 based on
    // leap-second rules
   // TODO use $()
