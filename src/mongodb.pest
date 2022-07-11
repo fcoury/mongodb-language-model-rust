@@ -401,3 +401,319 @@ ejson_binary = {
     )
   end_object
 }
+
+ejson_timestamp = {
+  begin_object ~
+      quotation_mark ~ "$timestamp" ~ quotation_mark ~ name_separator ~
+      ( // object
+        begin_object ~
+          quotation_mark ~ "t" ~ quotation_mark ~ name_separator ~ number ~ value_separator ~
+          quotation_mark ~ "i" ~ quotation_mark ~ name_separator ~ number ~
+        end_object
+      )
+  end_object
+}
+
+// ----- 4. Objects -----
+
+object = {
+  begin_object ~
+    ( // members
+      member ~ ( value_separator ~ member )*
+    )? ~
+  end_object
+}
+
+member = {
+  key ~ name_separator ~ leaf_value
+}
+
+// ----- 5. Arrays -----
+
+array = {
+  begin_array ~
+    ( // values
+      leaf_value ~ ( value_separator ~ leaf_value )*
+    )? ~
+  end_array
+}
+
+array_number = {
+  begin_array ~
+    ( // values
+      number ~ ( value_separator ~ number )*
+    )? ~
+  end_array
+}
+
+// ----- 6. Numbers -----
+
+number = {
+  minus? ~ int ~ frac? ~ exp?
+}
+
+number_positive = {
+  int ~ frac? ~ exp?
+}
+
+// A numeric value that represents a longitude coordinate (to any precision between -180.0 and 180.0, inclusive)
+// Converted to PEG syntax from this regex: ^-?(180(\.0)?|(1[0-7]\d|[1-9]?\d)(\.(0|\d*[1-9]))?)$
+// Taking into account PEG's greedy behaviour and lack of backtracking.
+number_longitude = {
+  minus? ~ (
+    "180" ~ (decimal_point zero)?
+    | (
+      (( "1" ~ [0-7] ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ) ~ decimal_point ~ int* )
+      | (( "1" ~ [0-7] ~ ASCII_DIGIT | digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ))
+    )
+  )
+}
+
+// A numeric value that represents a latitude coordinate (to any precision between -90.0 and 90.0, inclusive)
+// Converted to PEG syntax from regex: ^-?(90(\.0)?|([1-8]?\d)(\.(0|\d*[1-9]))?)$
+// Taking into account PEG's greedy behaviour and lack of backtracking.
+number_latitude = {
+  minus? ~ (
+    "90" ~ (decimal_point zero)?
+    | (
+      (( digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ) ~ decimal_point ~ int* )
+      | (( digit1_9 ~ ASCII_DIGIT | ASCII_DIGIT ))
+    )
+  )
+}
+
+
+decimal_point = { "." }
+digit1_9      = { [1-9] }
+e             = { [eE] }
+exp           = { e ~ (minus / plus)? ~ ASCII_DIGIT+ }
+frac          = { decimal_point ~ ASCII_DIGIT+ }
+int           = { zero | (digit1_9 ~ ASCII_DIGIT*) }
+minus         = { "-" }
+plus          = { "+" }
+zero          = { "0" }
+
+// ----- 7. Strings -----
+
+string = {
+  quotation_mark ~ char* ~ quotation_mark
+}
+
+char = {
+  unescaped
+  | escape ~
+    ( // sequence
+        "\""
+      | "\\"
+      | "/"
+      | "b"
+      | "f"
+      | "n"
+      | "r"
+      | "t"
+      // TODO $(...) below
+      | "u" ~ (ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT)
+    )
+}
+
+escape         = { "\\" }
+quotation_mark = { "\"" }
+unescaped      = { [^\0-\x1F\x22\x5C] }
+
+// ----- Core ABNF Rules -----
+
+//* See RFC 4234, Appendix B (http://tools.ietf.org/html/rfc4627). *//
+// TODO Confirm tha the constants already defined by pest.rs work for our case
+// DIGIT  = [0-9]
+// HEXDIG = [0-9a-f]i
+
+//
+// Data elements and interchange formats – Information interchange – Representation of dates and times
+//
+// https://en.wikipedia.org/wiki/ISO_8601
+// http://tools.ietf.org/html/rfc3339
+//
+// @append ietf/rfc5234-core-abnf.pegjs
+//
+
+// http://tools.ietf.org/html/rfc3339#appendix-A ISO 8601 Collected ABNF
+//* Date *//
+date_century = {
+  // 00-99
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+date_decate = {
+  ASCII_DIGIT
+}
+
+date_subdecade = {
+  ASCII_DIGIT
+}
+
+date_year = {
+  date_decade ~ date_subdecade
+}
+
+date_fullyear = {
+  date_century ~ date_year
+}
+
+date_month = {
+  // 01-12
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+date_wday = {
+  // 1-7
+  // 1 is Monday, 7 is Sunday
+  DIGIT
+}
+
+date_mday = {
+  // 01-28, 01-29, 01-30, 01-31 based on
+  // month/year
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+date_yday = {
+  // 001-365, 001-366 based on year
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+date_week = {
+  // 01-52, 01-53 based on year
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+datepart_fullyear = {
+  date_century? ~ date_year ~ "-"?
+}
+
+datepart_ptyear = {
+  "-" ~ (date_subdecade ~ "-"?)?
+}
+
+datepart_wkyear = {
+  datepart_ptyear | datepart_fullyear
+}
+
+dateopt_century = {
+  "-" | date_century
+}
+
+dateopt_fullyear {
+  "-" | datepart_fullyear
+}
+
+dateopt_year = {
+  "-" | date_year ~ "-"?
+}
+
+dateopt_month = {
+  "-" | date_month ~ "-"?
+}
+
+dateopt_week = {
+  "-" | date_week ~ "-"?
+}
+
+datespec_full = {
+  datepart_fullyear ~ date_month ~ "-"? ~ date_mday
+}
+
+datespec_year = {
+  date_century | dateopt_century ~ date_year
+}
+
+datespec_month = {
+  "-" ~ dateopt_year ~ date_month ~ ("-"? ~ date_mday)
+}
+
+datespec_year = {
+  date_century | dateopt_century ~ date_year
+}
+
+datespec_month = {
+  "-" ~ dateopt_year ~ date_month ~ ("-"? ~ date_mday)
+}
+
+datespec_mday = {
+  "--" ~ dateopt_month ~ date_mday
+}
+
+datespec_wday = {
+  "---" ~ date_wday
+}
+
+datespec_yday = {
+  dateopt_fullyear ~ date_yday
+}
+
+ date = {
+     datespec_full
+   | datespec_year
+   | datespec_month
+   | datespec_mday
+   | datespec_week
+   | datespec_wday
+   | datespec_yday
+}
+
+//* Time *//
+time_hour = {
+  // 00-24
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+time_minute = {
+  // 00-59
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+time_second = {
+   // 00-58, 00-59, 00-60 based on
+   // leap-second rules
+  // TODO use $()
+  (ASCII_DIGIT ~ ASCII_DIGIT)
+}
+
+time_fraction = {
+  // TODO $(ASCII_DIGIT)+
+  ("," | ".") ~ (ASCII_DIGIT)+
+}
+
+time_numoffset = {
+  ("+" | "-") ~ time_hour ~ (":"? ~ time_minute)?
+}
+
+time_zone = {
+  "Z" | time_numoffset
+}
+
+timeopt_hour = {
+  "-" | time_hour ~ ":"?
+}
+
+timeopt_minute = {
+  "-" | time_minute ~ ":"?
+}
+
+timespec_hour = {
+  time_hour ~ (":"? ~ time_minute ~ (":"? ~ time_second)?)?
+}
+
+timespec_minute = {
+  timeopt_hour ~ time_minute ~ (":"? ~ time_second)?
+}
+
+timespec_second = {
+  "-" ~ timeopt_minute ~ time_second
+}
