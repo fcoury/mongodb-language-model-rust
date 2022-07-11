@@ -1,3 +1,15 @@
+//! `mongodb-language-model` is a library for parsing the MongoDB language and
+//! returning an abstract syntax tree using pest.rs.
+//!
+//! # Example
+//!
+//! ```rust
+//! use mongodb_language_model::*;
+//!
+//! let input = r#"{ "$or": [ { "status": "A" }, { "qty": { "$lt": 30 } }] }"#;
+//! let ast = parse(input).unwrap();
+//! ```
+
 extern crate pest;
 #[macro_use]
 extern crate pest_derive;
@@ -9,36 +21,36 @@ use pest::{error::Error, iterators::Pair, Parser};
 pub struct MongoDbParser;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Expression {
+pub struct Expression {
     clauses: Vec<Clause>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Clause {
+pub enum Clause {
     Leaf(LeafClause),
     ExpressionTree(ExpressionTreeClause),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct LeafClause {
+pub struct LeafClause {
     pub key: String,
     pub value: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ExpressionTreeClause {
+pub struct ExpressionTreeClause {
     operator: String,
     expressions: Vec<Expression>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Value {
+pub enum Value {
     Leaf(LeafValue),
     Operators(Vec<Operator>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct LeafValue {
+pub struct LeafValue {
     value: serde_json::Value,
 }
 
@@ -46,7 +58,7 @@ struct LeafValue {
 //       value_operator_type, list_operator_type, elemmatch_expression_operator_type,
 //       operator_expression_operator_type and more special cases not yet handled
 #[derive(Debug, Clone, PartialEq)]
-enum Operator {
+pub enum Operator {
     // ElemMatch(ElemMatchOperator),
     // ElemMatchOperatorObject(ElemMatchOperatorObjectOperator),
     List(ListOperator),
@@ -54,24 +66,18 @@ enum Operator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ListOperator {
+pub struct ListOperator {
     pub operator: String,
     pub values: Vec<LeafValue>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ValueOperator {
+pub struct ValueOperator {
     pub operator: String,
     pub value: LeafValue,
 }
 
-fn main() {
-    let str = r#"{"status": "1"}"#;
-    let res = parse(str);
-    println!("{:?}", res);
-}
-
-fn parse(query: &str) -> Result<Expression, Error<Rule>> {
+pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
     let pair = MongoDbParser::parse(Rule::query, query)?.next().unwrap();
 
     fn parse_query(query: Pair<Rule>) -> Expression {
