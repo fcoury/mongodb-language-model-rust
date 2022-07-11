@@ -13,3 +13,4 @@ has been ported to Rust and pest.rs.
 ## Usage
 
 The module exposes a function `parse(query: &str) -> Result<Expression, Error<Rule>>`.
+
