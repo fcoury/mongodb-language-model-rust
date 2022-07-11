@@ -8,35 +8,44 @@ use pest::{error::Error, iterators::Pair, Parser};
 #[grammar = "mongodb.pest"]
 pub struct MongoDbParser;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 struct Expression {
-    clauses: Vec<LeafClause>,
+    clauses: Vec<Clause>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
+enum Clause {
+    Leaf(LeafClause),
+    ExpressionTree(ExpressionTreeClause),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct LeafClause {
     pub key: String,
     pub value: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 struct ExpressionTreeClause {
     operator: String,
     expressions: Vec<Expression>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 enum Value {
     Leaf(LeafValue),
     Operators(Vec<Operator>),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 struct LeafValue {
-    value: String,
+    value: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+// FIXME this can be different operator types:
+//       value_operator_type, list_operator_type, elemmatch_expression_operator_type,
+//       operator_expression_operator_type and more special cases not yet handled
+#[derive(Debug, Clone, PartialEq)]
 enum Operator {
     // ElemMatch(ElemMatchOperator),
     // ElemMatchOperatorObject(ElemMatchOperatorObjectOperator),
@@ -44,13 +53,13 @@ enum Operator {
     Value(ValueOperator),
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 struct ListOperator {
     pub operator: String,
     pub values: Vec<LeafValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 struct ValueOperator {
     pub operator: String,
     pub value: LeafValue,
@@ -67,21 +76,24 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
 
     fn parse_query(query: Pair<Rule>) -> Expression {
         let expression = query.into_inner().next().unwrap();
+        parse_expression(expression)
+    }
 
-        let clause_list = expression.into_inner().next().unwrap();
+    fn parse_expression(expression: Pair<Rule>) -> Expression {
+        let clause_list = expression.clone().into_inner().next().unwrap();
         match clause_list.as_rule() {
             Rule::clause_list => Expression {
                 clauses: parse_clause_list(clause_list),
             },
-            _ => unreachable!(),
+            t => unreachable!("parse_expression: {:?}\ngot: {:?}", t, expression),
         }
     }
 
-    fn parse_clause_list(clause: Pair<Rule>) -> Vec<LeafClause> {
+    fn parse_clause_list(clause: Pair<Rule>) -> Vec<Clause> {
         clause.into_inner().map(|pair| parse_clause(pair)).collect()
     }
 
-    fn parse_clause(outer_clause: Pair<Rule>) -> LeafClause {
+    fn parse_clause(outer_clause: Pair<Rule>) -> Clause {
         let clause = outer_clause.into_inner().next().unwrap();
 
         match clause.as_rule() {
@@ -89,36 +101,58 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
                 let mut inner = clause.into_inner();
                 let key = inner.next().unwrap().as_str();
                 let value = parse_value(inner.next().unwrap());
-                LeafClause {
-                    key: key.to_string(),
+                Clause::Leaf(LeafClause {
+                    key: serde_json::from_str(key).unwrap(),
                     value,
-                }
+                })
             }
-            _ => unreachable!(),
+            Rule::expression_tree_clause => {
+                let mut inner = clause.into_inner();
+                inner.next(); // quotation_mark
+                let operator = inner.next().unwrap().as_str();
+                inner.next(); // quotation_mark
+                let expression_list = inner.next().unwrap();
+                let expressions: Vec<Expression> = expression_list
+                    .into_inner()
+                    .map(|pair| parse_expression(pair))
+                    .collect();
+                Clause::ExpressionTree(ExpressionTreeClause {
+                    operator: operator.to_string(),
+                    expressions, // TODO parse_expression_tree(inner.next().unwrap()),
+                })
+            }
+            t => unreachable!("parse_clause: {:?}", t),
         }
     }
 
     fn parse_value(outer_value: Pair<Rule>) -> Value {
         let value = outer_value.into_inner().next().unwrap();
+        parse_value_inner(value)
+    }
 
+    fn parse_value_inner(value: Pair<Rule>) -> Value {
         match value.as_rule() {
             Rule::leaf_value => Value::Leaf(parse_leaf_value(value)),
             Rule::operator_expression => Value::Operators(parse_operator_expression(value)),
-            _ => unreachable!(),
+            t => unreachable!("parse_value: {:?}", t),
         }
     }
 
     fn parse_leaf_value(value: Pair<Rule>) -> LeafValue {
-        LeafValue {
-            value: value.as_str().to_string(),
+        let inner = value.clone().into_inner().next().unwrap();
+        match inner.as_rule() {
+            Rule::string => LeafValue {
+                value: serde_json::from_str(inner.as_str()).unwrap(),
+            },
+            Rule::number => LeafValue {
+                value: serde_json::from_str(inner.as_str()).unwrap(),
+            },
+            t => unreachable!("parse_leaf_value: {:?}", t),
         }
     }
 
     fn parse_operator_expression(operator_expression: Pair<Rule>) -> Vec<Operator> {
-        println!("operator_expression = {:?}", operator_expression);
-
         let inner = operator_expression.into_inner().next().unwrap();
-        println!("operator_expression inner = {:?}", inner);
 
         match inner.as_rule() {
             Rule::operator_list => parse_operator_list(inner),
@@ -126,9 +160,6 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
         }
     }
 
-    // FIXME this can be different operator types:
-    //       value_operator_type, list_operator_type, elemmatch_expression_operator_type,
-    //       operator_expression_operator_type and more special cases not yet handled
     fn parse_operator_list(operator_list: Pair<Rule>) -> Vec<Operator> {
         operator_list
             .into_inner()
@@ -136,18 +167,12 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
             .collect()
     }
 
-    // FIXME this can be different operator types:
-    //       value_operator_type, list_operator_type, elemmatch_expression_operator_type,
-    //       operator_expression_operator_type and more special cases not yet handled
     fn parse_operator(operator: Pair<Rule>) -> Operator {
-        println!("operator = {:?}", operator);
-        let operator_type = operator.into_inner().next().unwrap();
-
-        println!("operator_type = {:?}", operator_type);
-
+        let operator_type = operator.clone().into_inner().next().unwrap();
         match operator_type.as_rule() {
             Rule::list_operator_type => Operator::List(parse_list_operator_type(operator_type)),
-            _ => unreachable!(),
+            Rule::value_operator_type => Operator::Value(parse_value_operator_type(operator_type)),
+            t => unreachable!("parse_operator: {:?}\nGot: {:?}", t, operator_type),
         }
     }
 
@@ -164,9 +189,20 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
         }
     }
 
-    fn parse_leaf_value_list(leaf_value_list: Pair<Rule>) -> Vec<LeafValue> {
-        println!("\nleaf_value_list = {:?}", leaf_value_list);
+    fn parse_value_operator_type(operator_type: Pair<Rule>) -> ValueOperator {
+        let mut inner = operator_type.into_inner();
+        inner.next(); // quotation_mark
+        let operator = inner.next().unwrap().as_str();
+        inner.next(); // quotation_mark
+        let leaf_value = inner.next().unwrap();
 
+        ValueOperator {
+            operator: operator.to_string(),
+            value: parse_leaf_value(leaf_value),
+        }
+    }
+
+    fn parse_leaf_value_list(leaf_value_list: Pair<Rule>) -> Vec<LeafValue> {
         leaf_value_list
             .into_inner()
             .map(|pair| parse_leaf_value(pair))
@@ -179,6 +215,60 @@ fn parse(query: &str) -> Result<Expression, Error<Rule>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_parse_simple() {
+        let expression = parse(r#"{"status": "1"}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!("1") })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_with_regex() {
+        // FIXME support regex
+        // let expression =
+        //     parse(r#"{"status":"A","$or":[{"qty":{"$lt":30}},{"item":{"$regex":"/^p/"}}]}"#)
+        //         .unwrap();
+        // assert_eq!(expression, Expression { clauses: vec![] });
+    }
+
+    #[test]
+    fn test_parse_with_or() {
+        let expression = parse(r#"{"$or":[{"status":"A"},{"qty":{"$lt":30}}]}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::ExpressionTree(ExpressionTreeClause {
+                    operator: "$or".to_string(),
+                    expressions: vec![
+                        Expression {
+                            clauses: vec![Clause::Leaf(LeafClause {
+                                key: "status".to_string(),
+                                value: Value::Leaf(LeafValue { value: json!("A") })
+                            })],
+                        },
+                        Expression {
+                            clauses: vec![Clause::Leaf(LeafClause {
+                                key: "qty".to_string(),
+                                value: Value::Operators(vec![Operator::Value(ValueOperator {
+                                    operator: "$lt".to_string(),
+                                    value: LeafValue { value: json!(30) }
+                                })])
+                            })],
+                        },
+                    ],
+                })]
+            }
+        );
+    }
 
     #[test]
     fn test_parse_with_list_operator() {
@@ -187,51 +277,23 @@ mod tests {
             expression,
             Expression {
                 clauses: vec![
-                    LeafClause {
-                        key: "\"status\"".to_string(),
+                    Clause::Leaf(LeafClause {
+                        key: "status".to_string(),
                         value: Value::Operators(vec![Operator::List(ListOperator {
                             operator: "$in".to_string(),
                             values: vec![
-                                LeafValue {
-                                    value: "\"A\"".to_string(),
-                                },
-                                LeafValue {
-                                    value: "\"D\"".to_string(),
-                                },
+                                LeafValue { value: json!("A") },
+                                LeafValue { value: json!("D") },
                             ],
                         }),]),
-                    },
-                    LeafClause {
-                        key: "\"x\"".to_string(),
-                        value: Value::Leaf(LeafValue {
-                            value: "2".to_string(),
-                        })
-                    },
+                    }),
+                    Clause::Leaf(LeafClause {
+                        key: "x".to_string(),
+                        value: Value::Leaf(LeafValue { value: json!(2) })
+                    }),
                 ]
             }
         );
-    }
-
-    #[test]
-    fn test_parse_simple() {
-        let expression = parse(r#"{"status": "1"}"#).unwrap();
-        assert_eq!(
-            expression,
-            Expression {
-                clauses: vec![LeafClause {
-                    key: "\"status\"".to_string(),
-                    value: Value::Leaf(LeafValue {
-                        value: "\"1\"".to_string(),
-                    })
-                }]
-            }
-        );
-    }
-
-    #[test]
-    fn test_json_object_null() {
-        let parse = MongoDbParser::parse(Rule::json, r#""#);
-        assert!(parse.is_ok());
     }
 
     #[test]

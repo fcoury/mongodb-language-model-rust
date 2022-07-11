@@ -6,7 +6,7 @@ expression = { begin_object ~ clause_list ~ end_object }
 
 clause_list = { clause ~ (value_separator ~ clause)* }
 
-clause = { leaf_clause | expression_tree_clause | expression_clause | text_clause }
+clause = { expression_tree_clause | leaf_clause | expression_clause | text_clause }
 
 text_clause = { quotation_mark ~ text_operator ~ quotation_mark ~ name_separator ~ text_options }
 
@@ -22,7 +22,7 @@ text_options_optional = {
 }
 
 expression_tree_clause = {
-  quotation_mark ~ expression_tree_operator ~ quotation_mark ~ name_separator ~ expression_list ~ end_array
+  quotation_mark ~ expression_tree_operator ~ quotation_mark ~ name_separator ~ begin_array ~ expression_list ~ end_array
 }
 
 expression_tree_operator = { "$or" | "$nor" | "$and" }
@@ -239,7 +239,7 @@ leaf_value_list = {
 // assuming at least 1 character
 not_asterist_or_zero = { !("*" | "\x00") ~ ANY }
 
-light_char = { ASCII_ALPHANUMERIC }
+light_char = { ASCII_ALPHANUMERIC | "$" | "_" }
 
 key = {
   // TODO quotation_mark ~ not_asterist_or_zero* ~ quotation_mark

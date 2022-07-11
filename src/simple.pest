@@ -1,0 +1,9 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+begin_object    = _{ "{" }
+end_object      = _{ "}" }
+
+char = { ASCII_ALPHANUMERIC | "." | "_" | "/" | ":" }
+key = { "\"" ~ char* ~ "\""}
+value = { "\"" ~ char* ~ "\"" | "true" | "false" | "null" }
+object = { begin_object ~ key ~ ":" ~ value ~ end_object }
