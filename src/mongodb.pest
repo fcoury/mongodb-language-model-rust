@@ -1,0 +1,403 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+query = { expression }
+
+expression = { begin_object ~ clause_list ~ end_object }
+
+clause_list = { clause ~ (value_separator ~ clause)* }
+
+clause = { leaf_clause | expression_tree_clause | expression_clause | text_clause }
+
+text_clause = { quotation_mark ~ text_operator ~ quotation_mark ~ name_separator ~ text_options }
+
+text_options = {
+  begin_object ~ quotation_mark ~ search_operator ~ quotation_mark ~ name_separator ~ string ~
+  (value_separator ~ text_options_optional)? ~ end_object
+}
+
+text_options_value = { string | true | false }
+
+text_options_optional = {
+  (quotation_mark ~ text_optional_operator ~ quotation_mark ~ name_separator ~ text_options_value)*
+}
+
+expression_tree_clause = {
+  quotation_mark ~ expression_tree_operator ~ quotation_mark ~ name_separator ~ expression_list ~ end_array
+}
+
+expression_tree_operator = { "$or" | "$nor" | "$and" }
+
+expression_clause = {
+  quotation_mark ~ expression_operator ~ quotation_mark ~ name_separator ~ begin_object ~ operator ~ end_object
+}
+
+expression_operator = { "$expr" }
+
+expression_list = { ( expression ~ (value_separator ~ expression)* )? }
+
+where_clause = { quotation_mark ~ where_operator ~ quotation_mark ~ name_separator ~ string }
+
+leaf_clause = { key ~ name_separator ~ value }
+
+value = operator_expression | json
+
+// --- Operators ---
+
+value_operator = {
+  "$gte" |
+    "$gt" |
+    "$lte" |
+    "$lt" |
+    "$eq" |
+    "$ne" |
+    "$type" |
+    "$size" |
+    "$exists" |
+    "$bitsAllClear" |
+    "$bitsAllSet" |
+    "$bitsAnyClear" |
+    "$bitsAnySet"
+}
+
+list_operator = { "$in" | "$nin" | "$all" | "$mod" }
+
+operator_expression_operator = { "$not" | "$elemMatch" }
+
+operator_expression = { begin_object ~ operator_list ~ end_object }
+
+operator_list = { operator ~ (value_separator ~ operator)* }
+
+operator = {
+  // value-operator
+  ( quotation_mark ~ value_operator ~ quotation_mark ~ name_separator ~ json )
+  // list-operator
+  | ( quotation_mark ~ list_operator ~ quotation_mark ~ name_separator ~ begin_array ~ leaf_value_list ~ end_array )
+  // elemmatch-expression-operator
+  | ( quotation_mark ~ "$elemMatch" ~ quotation_mark ~ name_separator ~ expression )
+  // operator-expression-operator
+  | ( quotation_mark ~ operator_expression_operator ~ quotation_mark ~ name_separator ~ operator_expression )
+  // special case for $not accepting $regex
+  | ( quotation_mark ~ "$not" ~ quotation_mark ~ name_separator ~ ejson_regex )
+  // geo-within-operator
+  | ( quotation_mark ~ "$geoWithin" ~ quotation_mark ~ name_separator ~ shape )
+  // geo-intersects-operator
+  | ( quotation_mark ~ "$geoIntersects" ~ quotation_mark ~ name_separator ~ geometry )
+  // near-operator
+  | ( quotation_mark ~ ("$nearSphere" | "$near") ~ quotation_mark ~ name_separator ~ (geometry_point | legacy_coordinates) )
+  // min-distance-operator
+  | ( quotation_mark ~ distance_operator ~ quotation_mark ~ name_separator ~ number_positive )
+}
+
+// -- Geo Operators --
+
+distance_operator = { "$minDistance" | "$maxDistance" }
+
+shape = { geometry | legacy_shape }
+
+geometry = {
+  begin_object ~
+    quotation_mark ~ "$geometry" ~ quotation_mark ~ name_separator ~
+    begin_object ~
+      (
+        quotation_mark ~ "type" ~ quotation_mark ~
+        name_separator ~ quotation_mark ~ geometry_type ~ quotation_mark
+      ) ~
+      (
+        value_separator ~ quotation_mark ~ "coordinates" ~ quotation_mark ~
+        name_separator ~ geometry_coordinates
+      ) ~
+    end_object ~
+  end_object
+}
+
+geometry_point = {
+  begin_object ~
+    quotation_mark ~ "$geometry" ~ quotation_mark ~ name_separator ~
+    begin_object ~
+      (
+        quotation_mark ~ "type" ~ quotation_mark ~
+        name_separator ~ quotation_mark ~ "Point" ~ quotation_mark
+      ) ~
+      (
+        value_separator ~ quotation_mark ~ "coordinates" ~ quotation_mark ~
+        name_separator ~ legacy_coordinates
+      ) ~
+    end_object ~
+    (
+      value_separator ~ quotation_mark ~ distance_operator ~ quotation_mark ~
+      name_separator ~ number_positive
+    )* ~
+  end_object
+}
+
+geometry_type = { "Polygon" | "MultiPolygon" }
+
+geometry_coordinates = {
+  begin_array ~
+    ( number | geometry_coordinates ) ~ (value_separator ~ (number | geometry_coordinates))* ~
+  end_array
+}
+
+legacy_coordinates = {
+  begin_array ~
+    number_longitude ~ value_separator ~
+    number_latitude
+  end_array
+}
+
+legacy_shape = {
+  begin_array ~
+    number_longitude ~ value_separator ~ number_latitude ~
+  end_array
+}
+
+center_shape = {
+  begin_object ~
+    quotation_mark ~ ("$centerSphere" | "$center") ~ quotation_mark ~ name_separator ~
+// TODO - How to translate the $ modifier to pest?
+//     $(
+       begin_array ~
+         begin_array ~
+           number ~ value_separator ~ number ~
+         end_array ~
+         value_separator ~
+         number ~
+       end_array
+//     )
+}
+
+box_shape = {
+  begin_object ~
+    quotation_mark ~ "$box" ~ quotation_mark ~ name_separator ~
+// TODO - How to translate the $ modifier to pest?
+//     $(
+    begin_array ~
+      begin_array ~
+        number_longitude ~ value_separator ~ number_latitude ~
+      end_array ~
+      value_separator ~
+      begin_array ~
+        number_longitude ~ value_separator ~ number_latitude ~
+      end_array ~
+    end_array ~
+//     )
+  end_object
+}
+
+polygon_shape = {
+  begin_object ~
+    quotation_mark ~ "$polygon" ~ quotation_mark ~ name_separator ~
+// TODO - How to translate the $ modifier to pest?
+//     $(
+    begin_array ~
+      (begin_array ~
+        number ~ value_separator ~ number ~
+      end_array) ~
+      (value_separator ~
+      begin_array ~
+        number ~ value_separator ~ number ~
+      end_array)* ~
+    end_array ~
+//     )
+  end_object
+}
+
+where_operator = { "$where" }
+
+text_operator = { "$text" }
+
+search_operator = { "$search" }
+
+text_optional_operator = { "$language" | "$caseSensitive" | "$diacriticSensitive" }
+
+case_sensitive_operator = { "$caseSensitive" }
+
+diacritic_sensitive_operator = { "$diacriticSensitive" }
+
+leaf_value_list = {
+  ( json ~ ( value_separator ~ json )* )?
+}
+
+// field name limitations: https://docs.mongodb.com/manual/reference/limits/#Restrictions-on-Field-Names
+// no "." no null character and does not start with "$"
+// assuming at least 1 character
+key = {
+  quotation_mark ~ ([^$] [^\x00"]*) ~ quotation_mark
+}
+
+//
+// JSON Grammar
+// ============
+//
+// Based on the grammar from RFC 7159 [1].
+//
+// Note that JSON is also specified in ECMA-262 [2], ECMA-404 [3], and on the
+// JSON website [4] (somewhat informally). The RFC seems the most authoritative
+// source, which is confirmed e.g. by [5].
+//
+// [1] http://tools.ietf.org/html/rfc7159
+// [2] http://www.ecma-international.org/publications/standards/Ecma-262.htm
+// [3] http://www.ecma-international.org/publications/standards/Ecma-404.htm
+// [4] http://json.org/
+// [5] https://www.tbray.org/ongoing/When/201x/2014/03/05/RFC7159-JSON
+//
+
+// ----- 2. JSON Grammar -----
+
+json = _{
+  leaf_value
+}
+
+begin_array     = _{ "[" }
+begin_object    = _{ "{" }
+end_array       = _{ "]" }
+end_object      = _{ "}" }
+name_separator  = _{ ":" }
+value_separator = _{ "," }
+
+// ----- 3. Values -----
+
+leaf_value = {
+  false
+  | null
+  | true
+  | object
+  | array
+  | number
+  | string
+  | extended_json_value
+}
+
+false = { "false" }
+null  = { "null"  }
+true  = { "true"  }
+
+extended_json_value = {
+  = ejson_regex
+  | ejson_objectid
+  | ejson_minkey
+  | ejson_maxkey
+  | ejson_long
+  | ejson_decimal
+  | ejson_date
+  | ejson_timestamp
+  | ejson_binary
+  | ejson_dbref
+  | ejson_undefined
+}
+
+ejson_objectid = {
+  begin_object ~
+    quotation_mark ~ "$oid" ~ quotation_mark ~
+    name_separator ~ quotation_mark ~ hexdig24 ~ quotation_mark ~
+  end_object
+}
+
+hexdig24 = {
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~
+  ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT
+}
+
+ejson_minkey = {
+  begin_object ~
+    quotation_mark ~ "$minKey" ~ quotation_mark ~
+    name_separator ~ ("1" | "true") ~
+  end_object
+}
+
+ejson_maxkey = {
+  begin_object ~
+    quotation_mark ~ "$maxKey" ~ quotation_mark ~
+    name_separator ~ ("1" | "true") ~
+  end_object
+}
+
+ejson_long = {
+  begin_object ~
+    quotation_mark ~ "$numberLong" ~ quotation_mark ~
+    name_separator ~ quotation_mark ~ ((plus | minus | ASCII_DIGIT)+) ~ quotation_mark ~
+  end_object
+}
+
+ejson_decimal = {
+  begin_object ~
+    quotation_mark ~ "$numberDecimal" ~ quotation_mark ~
+    name_separator ~ quotation_mark ~ (quotation_mark ~ number ~ quotation_mark) ~
+  end_object
+}
+
+ejson_date = {
+  begin_object ~
+    quotation_mark ~ "$date" ~ quotation_mark ~ name_separator ~
+    (ejson_iso8601_date | ejson_numberlong_date)
+  end_object
+}
+
+ejson_iso8601_date = {
+  quotation_mark ~ (iso_date_time) ~ quotation_mark
+  // TODO $(iso_date_time)
+}
+
+ejson_numberlong_date = {
+  ejson_long
+}
+
+ejson_undefined = {
+  begin_object ~
+    quotation_mark ~ "$undefined" ~ quotation_mark ~
+    name_separator ~ "true" ~
+  end_object
+}
+
+ejson_dbref = {
+  begin_object ~
+    ( // members
+      ( // ref
+        quotation_mark ~ "$ref" ~ quotation_mark ~
+        name_separator ~ string
+      ) ~
+      ( // id
+        value_separator ~ quotation_mark ~ "$id" ~ quotation_mark ~
+        name_separator ~ leaf_value
+      ) ~
+      ( // db
+        value_separator ~ quotation_mark ~ "$db" ~ quotation_mark ~
+        name_separator ~ string
+      )?
+    )
+  end_object
+}
+
+ejson_regex = {
+  begin_object ~
+    ( // members
+      ( // regex
+        quotation_mark ~ "$regex" ~ quotation_mark ~
+        name_separator ~ string
+      ) ~
+      ( // options
+        value_separator ~ quotation_mark ~ "$options" ~ quotation_mark ~
+        name_separator ~ quotation_mark ~ [gims]* ~ quotation_mark
+      )?
+    )
+  end_object
+}
+
+ejson_binary = {
+  begin_object ~
+    ( // members
+      ( // binary
+        quotation_mark ~ "$binary" ~ quotation_mark ~
+        name_separator ~ string
+      ) ~
+      ( // type
+        value_separator ~ quotation_mark ~ "$type" ~ quotation_mark ~
+        name_separator ~ quotation_mark ~ ASCII_HEX_DIGIT ~ quotation_mark
+      )
+    )
+  end_object
+}
