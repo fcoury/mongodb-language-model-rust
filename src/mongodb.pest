@@ -67,15 +67,27 @@ operator_expression = { begin_object ~ operator_list ~ end_object }
 
 operator_list = { operator ~ (value_separator ~ operator)* }
 
-operator = {
-  // value-operator
+value_operator_type = {
   ( quotation_mark ~ value_operator ~ quotation_mark ~ name_separator ~ json )
-  // list-operator
-  | ( quotation_mark ~ list_operator ~ quotation_mark ~ name_separator ~ begin_array ~ leaf_value_list ~ end_array )
-  // elemmatch-expression-operator
-  | ( quotation_mark ~ "$elemMatch" ~ quotation_mark ~ name_separator ~ expression )
-  // operator-expression-operator
-  | ( quotation_mark ~ operator_expression_operator ~ quotation_mark ~ name_separator ~ operator_expression )
+}
+
+list_operator_type = {
+  ( quotation_mark ~ list_operator ~ quotation_mark ~ name_separator ~ begin_array ~ leaf_value_list ~ end_array )
+}
+
+elemmatch_expression_operator_type = {
+  ( quotation_mark ~ "$elemMatch" ~ quotation_mark ~ name_separator ~ expression )
+}
+
+operator_expression_operator_type = {
+  ( quotation_mark ~ operator_expression_operator ~ quotation_mark ~ name_separator ~ operator_expression )
+}
+
+operator = {
+  value_operator_type
+  | list_operator_type
+  | elemmatch_expression_operator_type
+  | operator_expression_operator_type
   // special case for $not accepting $regex
   | ( quotation_mark ~ "$not" ~ quotation_mark ~ name_separator ~ ejson_regex )
   // geo-within-operator
