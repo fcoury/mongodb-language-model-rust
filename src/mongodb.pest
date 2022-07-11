@@ -717,3 +717,73 @@ timespec_minute = {
 timespec_second = {
   "-" ~ timeopt_minute ~ time_second
 }
+
+timespec_base = {
+  timespec_hour | timespec_minute | timespec_second
+}
+
+time = {
+  timespec_base ~ time_fraction? ~ time_zone?
+}
+
+iso_date_time = {
+  date ~ "T" ~ time
+}
+
+//* Durations *//
+dur_second = {
+  ASCII_DIGIT+ ~ "S"
+}
+
+dur_minute = {
+  ASCII_DIGIT+ ~ "M" ~ dur_second?
+}
+
+dur_hour = {
+  ASCII_DIGIT+ ~ "H" ~ dur_minute?
+}
+
+dur_time = {
+  "T" ~ (dur_hour | dur_minute | dur_second)
+}
+
+dur_day = {
+  ASCII_DIGIT+ ~ "D"
+}
+
+dur_week = {
+  ASCII_DIGIT+ ~ "W"
+}
+
+dur_month = {
+  ASCII_DIGIT+ ~ "M" ~ dur_day?
+}
+
+dur_year = {
+  ASCII_DIGIT+ ~ "Y" ~ dur_month?
+}
+
+dur_date = {
+  (dur_year | dur_month | dur_day) ~ dur_time?
+}
+
+duration = {
+  "P" ~ (dur_date | dur_time | dur_week)
+}
+
+//* Periods *//
+period_explicit = {
+  iso_date_time ~ "/" ~ iso_date_time
+}
+
+period_start = {
+  iso_date_time ~ "/" ~ duration
+}
+
+period_end = {
+  duration ~ "/" ~ iso_date_time
+}
+
+period = {
+  period_explicit | period_start | period_end
+}
