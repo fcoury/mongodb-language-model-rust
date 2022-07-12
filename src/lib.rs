@@ -63,6 +63,7 @@ pub enum Operator {
     // ElemMatchOperatorObject(ElemMatchOperatorObjectOperator),
     List(ListOperator),
     Value(ValueOperator),
+    ExpressionOperator(OperatorExpressionOperator),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +76,12 @@ pub struct ListOperator {
 pub struct ValueOperator {
     pub operator: String,
     pub value: LeafValue,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperatorExpressionOperator {
+    pub operator: String,
+    pub operators: Vec<Operator>,
 }
 
 pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
@@ -178,7 +185,25 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
         match operator_type.as_rule() {
             Rule::list_operator_type => Operator::List(parse_list_operator_type(operator_type)),
             Rule::value_operator_type => Operator::Value(parse_value_operator_type(operator_type)),
+            Rule::operator_expression_operator_type => {
+                Operator::ExpressionOperator(parse_operator_expression_operator_type(operator_type))
+            }
             t => unreachable!("parse_operator: {:?}\nGot: {:?}", t, operator_type),
+        }
+    }
+
+    fn parse_operator_expression_operator_type(
+        operator_type: Pair<Rule>,
+    ) -> OperatorExpressionOperator {
+        let mut inner = operator_type.into_inner();
+        inner.next(); // quotation_mark
+        let operator = inner.next().unwrap().as_str();
+        inner.next(); // quotation_mark
+        let operator_expression = inner.next().unwrap();
+        let operators = parse_operator_expression(operator_expression);
+        OperatorExpressionOperator {
+            operator: operator.to_string(),
+            operators,
         }
     }
 
@@ -298,6 +323,28 @@ mod tests {
                         value: Value::Leaf(LeafValue { value: json!(2) })
                     }),
                 ]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_simple_with_not() {
+        let expression = parse(r#"{"age":{"$not":{"$gt":12}}}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "age".to_string(),
+                    value: Value::Operators(vec![Operator::ExpressionOperator(
+                        OperatorExpressionOperator {
+                            operator: "$not".to_string(),
+                            operators: vec![Operator::Value(ValueOperator {
+                                operator: "$gt".to_string(),
+                                value: LeafValue { value: json!(12) }
+                            })]
+                        }
+                    )])
+                })]
             }
         );
     }
