@@ -22,7 +22,7 @@ pub struct MongoDbParser;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
-    clauses: Vec<Clause>,
+    pub clauses: Vec<Clause>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,8 +39,8 @@ pub struct LeafClause {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionTreeClause {
-    operator: String,
-    expressions: Vec<Expression>,
+    pub operator: String,
+    pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +51,7 @@ pub enum Value {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LeafValue {
-    value: serde_json::Value,
+    pub value: serde_json::Value,
 }
 
 // FIXME this can be different operator types:
