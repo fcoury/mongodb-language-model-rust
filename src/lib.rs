@@ -107,7 +107,7 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
     }
 
     fn parse_clause(outer_clause: Pair<Rule>) -> Clause {
-        let clause = outer_clause.into_inner().next().unwrap();
+        let clause = outer_clause.clone().into_inner().next().unwrap();
 
         match clause.as_rule() {
             Rule::leaf_clause => {
@@ -134,7 +134,7 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
                     expressions, // TODO parse_expression_tree(inner.next().unwrap()),
                 })
             }
-            t => unreachable!("parse_clause: {:?}", t),
+            t => unreachable!("parse_clause: {:?}\nGot: {:?}", t, outer_clause),
         }
     }
 
@@ -147,7 +147,7 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
         match value.as_rule() {
             Rule::leaf_value => Value::Leaf(parse_leaf_value(value)),
             Rule::operator_expression => Value::Operators(parse_operator_expression(value)),
-            t => unreachable!("parse_value: {:?}", t),
+            t => unreachable!("parse_value: {:?}\nGot: {:?}", t, value),
         }
     }
 
@@ -160,16 +160,28 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
             Rule::number => LeafValue {
                 value: serde_json::from_str(inner.as_str()).unwrap(),
             },
-            t => unreachable!("parse_leaf_value: {:?}", t),
+            Rule::object => LeafValue {
+                value: parse_value_object(inner),
+            },
+            t => unreachable!("parse_leaf_value: {:?}\nGot: {:?}", t, inner),
+        }
+    }
+
+    fn parse_value_object(value: Pair<Rule>) -> serde_json::Value {
+        let json: serde_json::Value = serde_json::from_str(value.as_str()).unwrap();
+        let key = json.as_object().unwrap().keys().next().unwrap().as_str();
+        match key {
+            "$f" | "$numberDecimal" => json.get(key).unwrap().clone(),
+            _ => json,
         }
     }
 
     fn parse_operator_expression(operator_expression: Pair<Rule>) -> Vec<Operator> {
-        let inner = operator_expression.into_inner().next().unwrap();
+        let inner = operator_expression.clone().into_inner().next().unwrap();
 
         match inner.as_rule() {
             Rule::operator_list => parse_operator_list(inner),
-            _ => unreachable!(),
+            t => unreachable!("parse_operator_expression: {:?}\nGot: {:?}", t, inner),
         }
     }
 
@@ -257,6 +269,49 @@ mod tests {
                 clauses: vec![Clause::Leaf(LeafClause {
                     key: "status".to_string(),
                     value: Value::Leaf(LeafValue { value: json!("1") })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_simple_with_extended_double() {
+        let expression = parse(r#"{"x":{"$f":"2.3"}}"#).unwrap();
+        // let expression = parse(r#"{"status": { "$f": 1.2 }}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!(1.2) })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_simple_with_alt_extended_double() {
+        let expression = parse(r#"{"status": { "$numberDecimal": 1.2 }}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!(1.2) })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_simple_with_double() {
+        let expression = parse(r#"{"status": 1.2}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!(1.2) })
                 })]
             }
         );
@@ -382,6 +437,24 @@ mod tests {
     #[test]
     fn test_member_string() {
         let parse = MongoDbParser::parse(Rule::member, r#""status": "true""#);
+        assert!(parse.is_ok());
+    }
+
+    #[test]
+    fn test_member_decimal_number() {
+        let parse = MongoDbParser::parse(Rule::member, r#""status": 1.2"#);
+        assert!(parse.is_ok());
+    }
+
+    #[test]
+    fn test_member_explicit_decimal_number() {
+        let parse = MongoDbParser::parse(Rule::member, r#""status": { "$numberDecimal": 1.2 }"#);
+        assert!(parse.is_ok());
+    }
+
+    #[test]
+    fn test_member_explicit_alt_decimal_number() {
+        let parse = MongoDbParser::parse(Rule::member, r#""status": { "$f": 1.2 }"#);
         assert!(parse.is_ok());
     }
 }

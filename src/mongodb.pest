@@ -339,14 +339,14 @@ ejson_maxkey = {
 
 ejson_long = {
   begin_object ~
-    quotation_mark ~ "$numberLong" ~ quotation_mark ~
+    quotation_mark ~ ("$numberLong" | "$i") ~ quotation_mark ~
     name_separator ~ quotation_mark ~ ((plus | minus | ASCII_DIGIT)+) ~ quotation_mark ~
   end_object
 }
 
 ejson_decimal = {
   begin_object ~
-    quotation_mark ~ "$numberDecimal" ~ quotation_mark ~
+    quotation_mark ~ ("$numberDecimal" | "$f") ~ quotation_mark ~
     name_separator ~ quotation_mark ~ (quotation_mark ~ number ~ quotation_mark) ~
   end_object
 }
