@@ -276,13 +276,12 @@ mod tests {
 
     #[test]
     fn test_parse_simple_with_extended_double() {
-        let expression = parse(r#"{"x":{"$f":"2.3"}}"#).unwrap();
-        // let expression = parse(r#"{"status": { "$f": 1.2 }}"#).unwrap();
+        let expression = parse(r#"{"x":{"$f":1.2}}"#).unwrap();
         assert_eq!(
             expression,
             Expression {
                 clauses: vec![Clause::Leaf(LeafClause {
-                    key: "status".to_string(),
+                    key: "x".to_string(),
                     value: Value::Leaf(LeafValue { value: json!(1.2) })
                 })]
             }
