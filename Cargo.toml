@@ -6,7 +6,7 @@ license = "Apache-2.0"
 name = "mongodb-language-model"
 readme = "README.md"
 repository = "https://github.com/fcoury/mongodb-language-model-rust"
-version = "0.1.3"
+version = "0.1.4"
 
 [dependencies]
 pest = "2.0"
