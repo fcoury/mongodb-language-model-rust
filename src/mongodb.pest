@@ -237,13 +237,10 @@ leaf_value_list = {
 // field name limitations: https://docs.mongodb.com/manual/reference/limits/#Restrictions-on-Field-Names
 // no "." no null character and does not start with "$"
 // assuming at least 1 character
-not_asterist_or_zero = { !("*" | "\x00") ~ ANY }
-
-light_char = { ASCII_ALPHANUMERIC | "$" | "_" }
 
 key = {
   // TODO quotation_mark ~ not_asterist_or_zero* ~ quotation_mark
-  quotation_mark ~ light_char* ~ quotation_mark
+  quotation_mark ~ char* ~ quotation_mark
 }
 
 //
@@ -518,24 +515,13 @@ zero          = { "0" }
 
 string = {
   // TODO quotation_mark ~ char* ~ quotation_mark
-  quotation_mark ~ light_char* ~ quotation_mark
+  quotation_mark ~ char* ~ quotation_mark
 }
 
 char = {
-  unescaped
-  | escape ~
-    ( // sequence
-        "\""
-      | "\\"
-      | "/"
-      | "b"
-      | "f"
-      | "n"
-      | "r"
-      | "t"
-      // TODO $(...) below
-      | "u" ~ (ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT ~ ASCII_HEX_DIGIT)
-    )
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
 }
 
 escape         = { "\\" }
