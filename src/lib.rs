@@ -163,6 +163,15 @@ pub fn parse(query: &str) -> Result<Expression, Error<Rule>> {
             Rule::object => LeafValue {
                 value: parse_value_object(inner),
             },
+            Rule::false_lit => LeafValue {
+                value: serde_json::json!(false),
+            },
+            Rule::true_lit => LeafValue {
+                value: serde_json::json!(true),
+            },
+            Rule::null => LeafValue {
+                value: serde_json::json!(null),
+            },
             t => unreachable!("parse_leaf_value: {:?}\nGot: {:?}", t, inner),
         }
     }
@@ -269,6 +278,50 @@ mod tests {
                 clauses: vec![Clause::Leaf(LeafClause {
                     key: "status".to_string(),
                     value: Value::Leaf(LeafValue { value: json!("1") })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_true_bool() {
+        let expression = parse(r#"{"status": true}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!(true) })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_false_bool() {
+        let expression = parse(r#"{"status": false}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue {
+                        value: json!(false)
+                    })
+                })]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_null() {
+        let expression = parse(r#"{"status": null}"#).unwrap();
+        assert_eq!(
+            expression,
+            Expression {
+                clauses: vec![Clause::Leaf(LeafClause {
+                    key: "status".to_string(),
+                    value: Value::Leaf(LeafValue { value: json!(null) })
                 })]
             }
         );
